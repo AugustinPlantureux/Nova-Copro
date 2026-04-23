@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# Environment variables — NE JAMAIS COMMITTER
+.env
+.env.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Misc
+.DS_Store
