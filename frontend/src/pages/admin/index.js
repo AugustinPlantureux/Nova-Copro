@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import toast from 'react-hot-toast';
-import { Users, Building2, FolderKey, Clock, ArrowRight } from 'lucide-react';
+import { Users, Building2, FolderKey, Clock, ArrowRight, Shield } from 'lucide-react';
 import { adminAPI } from '../../lib/api';
 import { withAuth, useAuth } from '../../lib/auth';
 import Layout from '../../components/Layout';
@@ -13,9 +13,7 @@ const StatCard = ({ icon: Icon, label, value, color, href }) => (
       <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${color}`}>
         <Icon size={20} />
       </div>
-      {href && (
-        <ArrowRight size={16} className="text-gray-300 group-hover:text-brand-500 transition-colors" />
-      )}
+      {href && <ArrowRight size={16} className="text-gray-300 group-hover:text-brand-500 transition-colors" />}
     </div>
     <div className="text-3xl font-bold text-gray-900 mb-1">{value ?? '—'}</div>
     <div className="text-sm text-gray-500">{label}</div>
@@ -62,7 +60,7 @@ function AdminPage() {
           {/* Stats */}
           {loading ? (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              {[1, 2, 3].map(i => (
+              {[1,2,3].map(i => (
                 <div key={i} className="card animate-pulse">
                   <div className="w-11 h-11 bg-gray-100 rounded-xl mb-3" />
                   <div className="h-8 bg-gray-100 rounded w-16 mb-2" />
@@ -72,75 +70,67 @@ function AdminPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              <StatCard
-                icon={Users}
-                label="Utilisateurs actifs"
-                value={stats?.nb_utilisateurs}
-                color="bg-blue-100 text-blue-700"
-                href="/admin/users"
-              />
-              <StatCard
-                icon={Building2}
-                label="Copropriétés"
-                value={stats?.nb_coproprietes}
-                color="bg-emerald-100 text-emerald-700"
-                href="/admin/coproprietes"
-              />
-              <StatCard
-                icon={FolderKey}
-                label="Accès configurés"
-                value={stats?.nb_acces}
-                color="bg-amber-100 text-amber-700"
-              />
+              <StatCard icon={Users}     label="Utilisateurs actifs" value={stats?.nb_utilisateurs} color="bg-blue-100 text-blue-700"    href="/admin/users" />
+              <StatCard icon={Building2} label="Copropriétés"        value={stats?.nb_coproprietes} color="bg-emerald-100 text-emerald-700" href="/admin/coproprietes" />
+              <StatCard icon={FolderKey} label="Accès configurés"    value={stats?.nb_acces}        color="bg-amber-100 text-amber-700" />
             </div>
           )}
 
           {/* Accès rapides */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
             <Link href="/admin/users" className="card hover:shadow-md transition-all group flex items-center gap-4">
-              <div className="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-brand-600 text-2xl">
-                👤
-              </div>
+              <div className="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center text-2xl">👤</div>
               <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 group-hover:text-brand-700 transition-colors">
-                  Gérer les utilisateurs
-                </h3>
+                <h3 className="font-semibold text-gray-900 group-hover:text-brand-700 transition-colors">Gérer les utilisateurs</h3>
                 <p className="text-sm text-gray-500">Ajouter, modifier, supprimer des accès</p>
               </div>
               <ArrowRight size={18} className="text-gray-300 group-hover:text-brand-500 transition-colors" />
             </Link>
 
             <Link href="/admin/coproprietes" className="card hover:shadow-md transition-all group flex items-center gap-4">
-              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-2xl">
-                🏢
-              </div>
+              <div className="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-2xl">🏢</div>
               <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 group-hover:text-emerald-700 transition-colors">
-                  Gérer les copropriétés
-                </h3>
+                <h3 className="font-semibold text-gray-900 group-hover:text-emerald-700 transition-colors">Gérer les copropriétés</h3>
                 <p className="text-sm text-gray-500">Configurer les dossiers Drive par immeuble</p>
               </div>
               <ArrowRight size={18} className="text-gray-300 group-hover:text-emerald-500 transition-colors" />
+            </Link>
+
+            <Link href="/admin/import" className="card hover:shadow-md transition-all group flex items-center gap-4">
+              <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-2xl">📊</div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-gray-900 group-hover:text-amber-700 transition-colors">Import Excel</h3>
+                <p className="text-sm text-gray-500">Importer ou simuler un import de données</p>
+              </div>
+              <ArrowRight size={18} className="text-gray-300 group-hover:text-amber-500 transition-colors" />
+            </Link>
+
+            <Link href="/admin/audit" className="card hover:shadow-md transition-all group flex items-center gap-4">
+              <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center">
+                <Shield size={22} className="text-purple-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-gray-900 group-hover:text-purple-700 transition-colors">Journal d'audit</h3>
+                <p className="text-sm text-gray-500">Traçabilité de toutes les opérations admin</p>
+              </div>
+              <ArrowRight size={18} className="text-gray-300 group-hover:text-purple-500 transition-colors" />
             </Link>
           </div>
 
           {/* Dernières connexions */}
           <div className="card">
             <h2 className="text-base font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Clock size={18} className="text-gray-400" />
-              Dernières connexions
+              <Clock size={18} className="text-gray-400" /> Dernières connexions
             </h2>
             {loading ? (
               <div className="space-y-3">
-                {[1,2,3].map(i => (
-                  <div key={i} className="h-10 bg-gray-100 rounded-xl animate-pulse" />
-                ))}
+                {[1,2,3].map(i => <div key={i} className="h-10 bg-gray-100 rounded-xl animate-pulse" />)}
               </div>
-            ) : stats?.recent_logins?.length === 0 ? (
+            ) : !stats?.recent_logins?.length ? (
               <p className="text-sm text-gray-400 py-4 text-center">Aucune connexion enregistrée.</p>
             ) : (
               <div className="divide-y divide-gray-50">
-                {stats?.recent_logins?.map((item, i) => (
+                {stats.recent_logins.map((item, i) => (
                   <div key={i} className="py-3 flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
@@ -159,6 +149,7 @@ function AdminPage() {
               </div>
             )}
           </div>
+
         </div>
       </Layout>
     </>

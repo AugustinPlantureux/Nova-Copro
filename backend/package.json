@@ -1,19 +1,29 @@
 {
   "name": "nova-copro-backend",
-  "version": "1.0.0",
-  "description": "Nova Copro - API backend",
+  "version": "2.0.0",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "db:setup": "node src/db/setup.js"
+    "db:setup": "node src/db/setup.js",
+    "db:migrate": "node src/db/migrate_encrypt.js",
+    "admin:create": "node scripts/create-admin.js",
+    "keys:reencrypt": "node scripts/reencrypt.js",
+    "drive:sync": "node scripts/sync-drive-permissions.js",
+    "drive:sync:dry": "node scripts/sync-drive-permissions.js --dry-run",
+    "drive:revoke-all": "node scripts/sync-drive-permissions.js --revoke-only"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-rate-limit": "^7.3.1",
+    "googleapis": "^140.0.0",
+    "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.0.0",
     "pg": "^8.12.0",
     "resend": "^3.3.0"
   },

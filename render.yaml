@@ -1,0 +1,66 @@
+# Render Blueprint — Nova Copro
+# Placer ce fichier à la RACINE du dépôt GitHub.
+# Render détecte automatiquement ce fichier et propose le déploiement en un clic.
+
+services:
+  - type: web
+    name: nova-copro-api
+    runtime: node
+    plan: starter
+    rootDir: backend          # le backend est dans /backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nova-copro-db
+          property: connectionString
+      - key: PORT
+        value: "3001"
+
+      # JWT — généré automatiquement par Render
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Chiffrement PII — à renseigner manuellement dans Render Dashboard
+      # Générer : openssl rand -hex 32
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: HMAC_KEY
+        sync: false
+      - key: KEY_VERSION
+        value: "1"
+
+      # OTP — à renseigner manuellement
+      # Générer : openssl rand -base64 32
+      - key: OTP_SECRET
+        sync: false
+
+      # Google Drive — coller le JSON credentials sur une ligne
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+
+      # Email (Resend)
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+
+      # URL du frontend (ex : https://nova-copro.vercel.app)
+      - key: FRONTEND_URL
+        sync: false
+
+      # Emails jamais révoqués par le script sync Drive (virgule-séparés)
+      - key: SYNC_PROTECTED_EMAILS
+        sync: false
+
+databases:
+  - name: nova-copro-db
+    plan: starter
+    databaseName: nova_copro
+    user: nova_copro_user

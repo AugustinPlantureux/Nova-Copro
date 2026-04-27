@@ -4,8 +4,8 @@ import { useRouter } from 'next/router';
 import { useAuth } from '../lib/auth';
 import Logo from './Logo';
 import {
-  LayoutDashboard, Users, Building2, LogOut,
-  Menu, X, ChevronRight, Settings
+  LayoutDashboard, Users, Building2, LogOut, FileSpreadsheet,
+  Menu, X, ChevronRight, Settings, Shield,
 } from 'lucide-react';
 
 const NavLink = ({ href, icon: Icon, label, active }) => (
@@ -31,9 +31,11 @@ export default function Layout({ children, title }) {
   const navLinks = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Mes documents' },
     ...(isAdmin ? [
-      { href: '/admin', icon: Settings, label: 'Tableau de bord admin' },
-      { href: '/admin/coproprietes', icon: Building2, label: 'Copropriétés' },
-      { href: '/admin/users', icon: Users, label: 'Utilisateurs' },
+      { href: '/admin',              icon: Settings,       label: 'Tableau de bord admin' },
+      { href: '/admin/coproprietes', icon: Building2,      label: 'Copropriétés' },
+      { href: '/admin/users',        icon: Users,          label: 'Utilisateurs' },
+      { href: '/admin/import',       icon: FileSpreadsheet,label: 'Import Excel' },
+      { href: '/admin/audit',        icon: Shield,         label: 'Journal d\'audit' },
     ] : []),
   ];
 
@@ -41,12 +43,10 @@ export default function Layout({ children, title }) {
 
   const Sidebar = () => (
     <div className="flex flex-col h-full">
-      {/* Logo */}
       <div className="bg-gradient-to-br from-brand-900 to-brand-700 p-6">
         <Logo size="sm" />
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 p-4 space-y-1">
         {navLinks.map((link) => (
           <NavLink
@@ -57,7 +57,6 @@ export default function Layout({ children, title }) {
         ))}
       </nav>
 
-      {/* User footer */}
       <div className="p-4 border-t border-gray-100">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-9 h-9 rounded-full bg-brand-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
@@ -83,12 +82,10 @@ export default function Layout({ children, title }) {
 
   return (
     <div className="min-h-screen flex bg-gray-50">
-      {/* Sidebar desktop */}
       <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-100 fixed inset-y-0 z-30 shadow-sm">
         <Sidebar />
       </aside>
 
-      {/* Sidebar mobile overlay */}
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-40 flex">
           <div className="fixed inset-0 bg-black/30 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
@@ -104,9 +101,7 @@ export default function Layout({ children, title }) {
         </div>
       )}
 
-      {/* Main content */}
       <div className="flex-1 lg:ml-64 flex flex-col min-h-screen">
-        {/* Top bar */}
         <header className="bg-white border-b border-gray-100 px-4 lg:px-8 py-4 flex items-center gap-4 sticky top-0 z-20 shadow-sm">
           <button
             onClick={() => setMobileOpen(true)}
@@ -117,12 +112,10 @@ export default function Layout({ children, title }) {
           <h1 className="text-lg font-semibold text-gray-900">{title}</h1>
         </header>
 
-        {/* Page content */}
         <main className="flex-1 p-4 lg:p-8">
           {children}
         </main>
 
-        {/* Footer */}
         <footer className="py-4 px-8 text-center text-xs text-gray-400 border-t border-gray-100">
           Nova Copro © {new Date().getFullYear()} — Espace documentaire sécurisé
         </footer>
