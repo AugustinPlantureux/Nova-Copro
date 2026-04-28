@@ -115,6 +115,9 @@ export const adminAPI = {
   deleteAcces: (id)      => api.delete(`/api/admin/acces/${id}`),
 
   getAuditLog: (params) => api.get('/api/admin/audit', { params }),
+
+  driveSyncDry: () => api.post('/api/admin/drive/sync/dry'),
+  driveSyncApply: () => api.post('/api/admin/drive/sync/apply'),
 };
 
 // ── Import ────────────────────────────────────────────────────
