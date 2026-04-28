@@ -521,4 +521,45 @@ router.get('/audit', async (req, res) => {
   }
 });
 
+// ── Sync Drive ────────────────────────────────────────────────
+
+router.post('/drive/sync/dry', async (req, res) => {
+  try {
+    const { runSync } = require('../services/driveSync');
+
+    const report = await runSync({ dryRun: true });
+
+    return res.json({
+      success: true,
+      report,
+    });
+  } catch (err) {
+    console.error('drive sync dry error:', err);
+    return res.status(500).json({ error: err.message || 'Erreur sync Drive' });
+  }
+});
+
+router.post('/drive/sync/apply', async (req, res) => {
+  try {
+    const { runSync } = require('../services/driveSync');
+
+    const report = await runSync({ dryRun: false });
+
+    await audit(req, 'drive.sync', 'drive', null, {
+      granted: report.counts.granted,
+      revoked: report.counts.revoked,
+      unchanged: report.counts.unchanged,
+      errors: report.counts.errors,
+    });
+
+    return res.json({
+      success: true,
+      report,
+    });
+  } catch (err) {
+    console.error('drive sync apply error:', err);
+    return res.status(500).json({ error: err.message || 'Erreur sync Drive' });
+  }
+});
+
 module.exports = router;
