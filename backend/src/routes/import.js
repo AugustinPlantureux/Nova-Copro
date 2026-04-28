@@ -144,13 +144,21 @@ router.post('/', (req, res, next) => {
 
     // Convertit une valeur de cellule ExcelJS en string.
   // Gère les objets hyperlink { text, hyperlink } et richText — fréquents sur les URLs Drive.
-  const cellToString = (value) => {
+    const cellToString = (value, key) => {
     if (value === null || value === undefined) return '';
+  
     if (typeof value === 'object') {
+      if (key === 'email') {
+        return String(value.text || value.hyperlink || '')
+          .trim()
+          .replace(/^mailto:/i, '');
+      }
+  
       if (value.hyperlink) return String(value.hyperlink).trim();
-      if (value.text)      return String(value.text).trim();
-      if (value.richText)  return value.richText.map(x => x.text || '').join('').trim();
+      if (value.text) return String(value.text).trim();
+      if (value.richText) return value.richText.map(x => x.text || '').join('').trim();
     }
+  
     return String(value).trim();
   };
 
@@ -160,7 +168,7 @@ router.post('/', (req, res, next) => {
       const obj = {};
       row.eachCell((cell, col) => {
         const key = headers[col];
-        if (key) obj[key] = cellToString(cell.value);
+        if (key) obj[key] = cellToString(cell.value, key);
       });
       if (Object.keys(obj).length) rows.push(obj);
     });
@@ -179,7 +187,7 @@ router.post('/', (req, res, next) => {
       const row = rows[i];
       const get = (key) => (row[key] || '').trim();
 
-      const email          = get('email').toLowerCase();
+      const email = stripMailto(get('email')).toLowerCase();
       const nom            = get('nom');
       const prenom         = get('prenom');
       const coproprieteNom = get('copropriete_nom');
