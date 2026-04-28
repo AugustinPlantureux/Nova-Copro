@@ -24,6 +24,9 @@ function AdminPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [driveReport, setDriveReport] = useState(null);
+  const [driveLoading, setDriveLoading] = useState(false);
+  const [driveDryRunDone, setDriveDryRunDone] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -45,7 +48,45 @@ function AdminPage() {
       hour: '2-digit', minute: '2-digit',
     });
   };
-
+  const handleDriveDryRun = async () => {
+    try {
+      setDriveLoading(true);
+  
+      const { data } = await adminAPI.driveSyncDry();
+  
+      setDriveReport(data.report);
+      setDriveDryRunDone(true);
+  
+      toast.success('Simulation Drive terminée.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur pendant la simulation Drive.');
+    } finally {
+      setDriveLoading(false);
+    }
+  };
+  
+  const handleDriveApply = async () => {
+    if (!driveDryRunDone) {
+      toast.error('Lance d’abord une simulation.');
+      return;
+    }
+  
+    if (!confirm('Appliquer réellement la synchronisation Drive ?')) return;
+  
+    try {
+      setDriveLoading(true);
+  
+      const { data } = await adminAPI.driveSyncApply();
+  
+      setDriveReport(data.report);
+  
+      toast.success('Synchronisation Drive appliquée.');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Erreur pendant la synchronisation Drive.');
+    } finally {
+      setDriveLoading(false);
+    }
+  };
   return (
     <>
       <Head><title>Administration — Nova Copro</title></Head>
@@ -116,6 +157,45 @@ function AdminPage() {
               <ArrowRight size={18} className="text-gray-300 group-hover:text-purple-500 transition-colors" />
             </Link>
           </div>
+
+          {/* Sync Drive */}
+          <div className="card mt-6">
+            <h2>Synchronisation Google Drive</h2>
+          
+            <p className="text-sm text-gray-600 mt-2">
+              Simule puis applique les permissions Google Drive pour les utilisateurs importés.
+            </p>
+          
+            <div className="flex gap-3 mt-4">
+              <button
+                type="button"
+                onClick={handleDriveDryRun}
+                disabled={driveLoading}
+                className="btn btn-secondary"
+              >
+                {driveLoading ? 'Traitement...' : '🔍 Simuler la synchronisation Drive'}
+              </button>
+          
+              <button
+                type="button"
+                onClick={handleDriveApply}
+                disabled={driveLoading || !driveDryRunDone}
+                className="btn btn-primary"
+              >
+                🔄 Appliquer
+              </button>
+            </div>
+          
+            {driveReport && (
+              <div className="mt-4 text-sm">
+                <p>✅ {driveReport.counts?.granted ?? 0} permissions à ajouter</p>
+                <p>🗑️ {driveReport.counts?.revoked ?? 0} permissions à révoquer</p>
+                <p>✓ {driveReport.counts?.unchanged ?? 0} permissions inchangées</p>
+                <p>⚠️ {driveReport.counts?.errors ?? 0} erreurs</p>
+              </div>
+            )}
+          </div>
+
 
           {/* Dernières connexions */}
           <div className="card">
