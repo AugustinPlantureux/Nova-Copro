@@ -73,7 +73,7 @@ const sendOTP = async (email, code, prenom = null) => {
       subject: `${code} – Votre code de connexion Nova Copro`,
       html,
     });
-    console.log(`✉️ OTP envoyé`, result.id);
+    console.log(`✉️ OTP envoyé à ${email}`, result.id);
     return result;
   } catch (err) {
     console.error('❌ Erreur envoi OTP:', err);
@@ -148,7 +148,7 @@ const sendAccessRequest = async (requesterEmail, message = '') => {
     }),
   ]);
 
-  console.log(`📩 Demande d'accès reçue`);
+  console.log(`📩 Demande d'accès reçue de ${requesterEmail}`);
 };
 
 module.exports = { sendOTP, sendAccessRequest };

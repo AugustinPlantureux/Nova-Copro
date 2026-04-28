@@ -22,20 +22,8 @@ const router = express.Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const driveService = require('../services/drive');
-const rateLimit = require('express-rate-limit');
-
-// ── Rate limiting spécifique Drive ───────────────────────────
-// Indépendant du rate limit global — plus strict pour prévenir l'exfiltration.
-const driveLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Trop de requêtes Drive. Veuillez patienter avant de continuer.' },
-});
 
 router.use(authMiddleware);
-router.use(driveLimiter);
 
 // ── Helpers ───────────────────────────────────────────────────
 

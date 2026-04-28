@@ -125,16 +125,3 @@ END $$;
 
 -- ── Nettoyage OTP expirés (à planifier via pg_cron ou cron externe) ───
 -- DELETE FROM otp_codes WHERE expires_at < NOW() - INTERVAL '1 day';
-
--- ── Fonction de nettoyage OTP (appelée par le backend au démarrage) ──
--- Supprime les codes OTP expirés depuis plus d'1 jour.
--- Les codes des dernières 24h sont conservés pour les audits éventuels.
-CREATE OR REPLACE FUNCTION cleanup_expired_otp()
-RETURNS INTEGER AS $$
-DECLARE deleted_count INTEGER;
-BEGIN
-  DELETE FROM otp_codes WHERE expires_at < NOW() - INTERVAL '1 day';
-  GET DIAGNOSTICS deleted_count = ROW_COUNT;
-  RETURN deleted_count;
-END;
-$$ LANGUAGE plpgsql;

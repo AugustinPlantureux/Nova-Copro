@@ -9,6 +9,7 @@ services:
     plan: starter
     rootDir: backend          # le backend est dans /backend
     buildCommand: npm ci
+    preDeployCommand: node src/db/setup.js
     startCommand: npm start
     healthCheckPath: /health
     envVars:

@@ -46,10 +46,10 @@ const { encryptUser } = require('../services/crypto');
           ]
         );
         ok++;
-        console.log(`  ✅ Migré : id=${user.id}`);
+        console.log(`  ✅ Migré : ${user.email}`);
       } catch (err) {
         errors++;
-        console.error(`  ❌ Erreur sur id=${user.id}:`, err.message);
+        console.error(`  ❌ Erreur sur ${user.email}:`, err.message);
       }
     }
 

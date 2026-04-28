@@ -17,16 +17,6 @@ const sendCodeLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Limite supplémentaire par IP — empêche l'énumération d'emails en masse
-// (changer d'email à chaque requête ne contourne pas cette limite)
-const sendCodeIpLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 15,
-  message: { error: 'Trop de tentatives depuis cette adresse. Veuillez réessayer dans 15 minutes.' },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 const verifyCodeLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -91,9 +81,33 @@ const clearTokenCookie = (res) => {
   });
 };
 
+// Cookie JS lisible : fallback quand le HttpOnly est bloqué cross-origin (Safari, Firefox strict)
+const FALLBACK_COOKIE = 'nova_token_js';
+
+const setFallbackCookie = (res, token, rememberMe) => {
+  const maxAge = rememberMe
+    ? 180 * 24 * 60 * 60 * 1000
+    :       24 * 60 * 60 * 1000;
+  res.cookie(FALLBACK_COOKIE, token, {
+    httpOnly: false,   // Lisible par le frontend pour l'envoyer en Bearer
+    secure:   IS_PROD,
+    sameSite: IS_PROD ? 'none' : 'lax',
+    maxAge,
+    path:     '/',
+  });
+};
+
+const clearFallbackCookie = (res) => {
+  res.clearCookie(FALLBACK_COOKIE, {
+    secure:   IS_PROD,
+    sameSite: IS_PROD ? 'none' : 'lax',
+    path:     '/',
+  });
+};
+
 // ── POST /api/auth/send-code ──────────────────────────────────
 
-router.post('/send-code', sendCodeIpLimiter, sendCodeLimiter, async (req, res) => {
+router.post('/send-code', sendCodeLimiter, async (req, res) => {
   const { email } = req.body;
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'Email invalide' });
@@ -186,15 +200,19 @@ router.post('/verify-code', verifyCodeLimiter, async (req, res) => {
 
     const expiresIn = rememberMe ? '180d' : '24h';
     const token = jwt.sign(
-      { userId: user.id },           // isAdmin retiré : non utilisé par authMiddleware (re-fetch DB)
+      { userId: user.id, isAdmin: user.is_admin },
       process.env.JWT_SECRET,
       { expiresIn }
     );
 
     setTokenCookie(res, token, !!rememberMe);
+    // Cookie JS lisible (non HttpOnly) comme fallback cross-origin pour les navigateurs
+    // qui bloquent les cookies tiers. Même durée que le cookie HttpOnly principal.
+    setFallbackCookie(res, token, !!rememberMe);
 
     return res.json({
       success: true,
+      token,   // Envoyé pour que le frontend puisse poser un cookie non-HttpOnly comme fallback
       user: { id: user.id, email: user.email, nom: user.nom, prenom: user.prenom, isAdmin: user.is_admin },
       expiresIn,
     });
@@ -228,6 +246,7 @@ router.post('/request-access', accessRequestIpLimiter, accessRequestLimiter, asy
 
 router.post('/logout', (req, res) => {
   clearTokenCookie(res);
+  clearFallbackCookie(res);
   return res.json({ success: true });
 });
 

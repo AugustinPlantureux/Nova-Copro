@@ -267,9 +267,7 @@ const isDescendantOf = async (fileId, rootFolderId) => {
       });
       const parents = res.data.parents || [];
       if (parents.includes(rootFolderId)) {
-        // TTL positif : 10 min (réduit de 30 min → évite un accès prolongé si le fichier
-        // est déplacé hors du dossier autorisé dans Drive)
-        _ancestryCache.set(cacheKey, { ok: true, exp: Date.now() + 10 * 60 * 1000 });
+        _ancestryCache.set(cacheKey, { ok: true, exp: Date.now() + 30 * 60 * 1000 });
         return true;
       }
       if (!parents.length) break;
@@ -279,7 +277,6 @@ const isDescendantOf = async (fileId, rootFolderId) => {
     }
   }
 
-  // TTL négatif : 5 min (inchangé)
   _ancestryCache.set(cacheKey, { ok: false, exp: Date.now() + 5 * 60 * 1000 });
   return false;
 };

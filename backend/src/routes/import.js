@@ -236,8 +236,8 @@ router.post('/', (req, res, next) => {
         }
         const userId = userRow.rows[0].id;
 
-        // 2. Upsert copropriété (recherche insensible à la casse — évite les doublons "Les Jardins" vs "les jardins")
-        let coproRow = await client.query('SELECT id FROM coproprietes WHERE LOWER(nom) = LOWER($1)', [coproprieteNom]);
+        // 2. Upsert copropriété
+        let coproRow = await client.query('SELECT id FROM coproprietes WHERE nom = $1', [coproprieteNom]);
         if (!coproRow.rows.length) {
           coproRow = await client.query(
             'INSERT INTO coproprietes (nom, adresse, code_postal, ville) VALUES ($1,$2,$3,$4) RETURNING id',

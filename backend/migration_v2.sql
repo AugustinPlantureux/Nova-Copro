@@ -68,17 +68,6 @@ CREATE TABLE IF NOT EXISTS drive_folders_used (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ── 9. Fonction de nettoyage OTP ──────────────────────────────
-CREATE OR REPLACE FUNCTION cleanup_expired_otp()
-RETURNS INTEGER AS $$
-DECLARE deleted_count INTEGER;
-BEGIN
-  DELETE FROM otp_codes WHERE expires_at < NOW() - INTERVAL '1 day';
-  GET DIAGNOSTICS deleted_count = ROW_COUNT;
-  RETURN deleted_count;
-END;
-$$ LANGUAGE plpgsql;
-
 -- ── 8. Backfill drive_folders_used (anciens dossiers déjà en base) ──────
 -- Injecte dans l'historique tous les folder IDs Drive déjà présents
 -- dans user_acces et coproprietes, pour que le script de sync puisse
