@@ -187,7 +187,7 @@ router.post('/', (req, res, next) => {
       const row = rows[i];
       const get = (key) => (row[key] || '').trim();
 
-      const email = stripMailto(get('email')).toLowerCase();
+      const email = get('email').toLowerCase();
       const nom            = get('nom');
       const prenom         = get('prenom');
       const coproprieteNom = get('copropriete_nom');
