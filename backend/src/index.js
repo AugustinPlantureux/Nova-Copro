@@ -87,10 +87,9 @@ const csrfMiddleware = (req, res, next) => {
 
   // 2. Sec-Fetch-Site (navigateurs récents) — bloque les requêtes explicitement cross-site
   const secFetchSite = req.headers['sec-fetch-site'];
-  if (secFetchSite === 'cross-site') {
+  if (secFetchSite === 'cross-site' && (!origin || !ALLOWED_ORIGINS.has(origin))) {
     return res.status(403).json({ error: 'Requête cross-site refusée' });
   }
-
   // 3. Header custom posé par axios — impossible depuis un formulaire HTML cross-site
   if (req.headers['x-requested-with'] !== 'XMLHttpRequest') {
     return res.status(403).json({ error: 'Requête non autorisée' });
