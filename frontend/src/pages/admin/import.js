@@ -261,8 +261,7 @@ function AdminImport() {
                   <p className="text-sm text-blue-600">
                     Les accès ont été mis à jour dans Nova Copro. Pour appliquer les changements sur Google Drive :
                   </p>
-                  <pre className="text-xs bg-blue-100 rounded p-2 mt-2 text-blue-800 font-mono">npm run drive:sync:dry{"
-"}npm run drive:sync</pre>
+                  <pre className="text-xs bg-blue-100 rounded p-2 mt-2 text-blue-800 font-mono">{"npm run drive:sync:dry\nnpm run drive:sync"}</pre>
                 </div>
               )}
               {report.dry_run && report.errors.length === 0 && (
