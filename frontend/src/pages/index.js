@@ -136,7 +136,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const { data } = await authAPI.verifyCode(email, otp, rememberMe);
-      saveSession(data.user, rememberMe);
+      saveSession(data.token, data.user, rememberMe);
       login(data.user);
       toast.success(`Bienvenue${data.user.prenom ? ` ${data.user.prenom}` : ''} !`);
       router.push('/dashboard');

@@ -1,12 +1,19 @@
 /**
  * Client HTTP (axios)
  *
- * Le token JWT est stocké dans un cookie HttpOnly posé par le backend.
- * → Le frontend ne peut pas le lire depuis JS (résistant au XSS).
- * → axios envoie le cookie automatiquement grâce à `withCredentials: true`.
+ * Stratégie d'authentification cross-origin (Vercel + Render) :
  *
- * La session côté frontend repose uniquement sur le cookie `nova_user`
- * (non HttpOnly, contient uniquement les infos d'affichage — pas le token).
+ *   Primaire  : cookie HttpOnly `nova_token` posé par le backend.
+ *               Résistant au XSS. Envoyé automatiquement par le navigateur.
+ *               Peut être bloqué sur certains navigateurs (Safari, Firefox strict)
+ *               en cross-origin malgré SameSite=None.
+ *
+ *   Fallback  : cookie JS `nova_token_js` (lisible par le frontend).
+ *               Envoyé en header `Authorization: Bearer` si le HttpOnly est bloqué.
+ *               Le backend accepte les deux via authMiddleware.
+ *
+ * Cette approche garantit le fonctionnement sur TOUS les navigateurs,
+ * même ceux qui bloquent les cookies tiers.
  */
 
 import axios from 'axios';
@@ -14,11 +21,28 @@ import Cookies from 'js-cookie';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+const IS_PROD  = typeof window !== 'undefined' && window.location.protocol === 'https:';
+const COOKIE_OPTS = { secure: IS_PROD, sameSite: 'Strict' };
+
 const api = axios.create({
   baseURL:         API_URL,
   timeout:         15000,
-  withCredentials: true, // envoie le cookie HttpOnly nova_token automatiquement
-  headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+  withCredentials: true,
+  headers: {
+    'Content-Type':   'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+  },
+});
+
+// ── Injecter le Bearer token fallback si le cookie HttpOnly est absent ────
+// Le backend lit d'abord req.cookies.nova_token, puis Authorization Bearer.
+// Ce fallback s'active uniquement si nova_token_js est présent (posé au login).
+api.interceptors.request.use((config) => {
+  const fallbackToken = Cookies.get('nova_token_js');
+  if (fallbackToken) {
+    config.headers.Authorization = `Bearer ${fallbackToken}`;
+  }
+  return config;
 });
 
 // ── Codes d'erreur auth nécessitant une purge de session ──────
@@ -35,12 +59,11 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401 && typeof window !== 'undefined') {
       const code = error.response?.data?.code;
-
       if (AUTH_ERROR_CODES.has(code)) {
-        clearSession(); // supprime nova_user (le cookie HttpOnly est effacé par le backend)
+        clearSession();
         const reason = code === 'TOKEN_EXPIRED' ? 'expired' : 'invalid';
         window.location.href = `/?session=${reason}`;
-        return; // interrompre la chaîne de promesses
+        return;
       }
     }
     return Promise.reject(error);
@@ -49,23 +72,18 @@ api.interceptors.response.use(
 
 // ── Auth ──────────────────────────────────────────────────────
 export const authAPI = {
-  sendCode:   (email) =>
+  sendCode: (email) =>
     api.post('/api/auth/send-code', { email }),
 
   verifyCode: (email, code, rememberMe) =>
     api.post('/api/auth/verify-code', { email, code, rememberMe }),
 
-  // Le backend pose le cookie HttpOnly nova_token.
-  // Le frontend sauvegarde uniquement nova_user (infos d'affichage).
-
   logout: () => {
     clearSession();
-    // Le backend efface le cookie HttpOnly nova_token
     return api.post('/api/auth/logout').catch(() => {});
   },
 
-  me: () => api.get('/api/auth/me'),
-
+  me:            () => api.get('/api/auth/me'),
   requestAccess: (email, message) =>
     api.post('/api/auth/request-access', { email, message }),
 };
@@ -107,21 +125,31 @@ export const importAPI = {
   upload: (file, dryRun = false) => {
     const form = new FormData();
     form.append('file', file);
-    // Ne pas forcer Content-Type — axios le gère avec le bon boundary pour FormData
-    return api.post(`/api/admin/import${dryRun ? '?dry_run=true' : ''}`, form);
+    return api.post(`/api/admin/import${dryRun ? '?dry_run=true' : ''}`, form, {
+      headers: { 'Content-Type': undefined },
+    });
   },
 };
 
 // ── Session helpers ───────────────────────────────────────────
-// Note : seul nova_user est géré ici (infos d'affichage).
-// Le token JWT est dans un cookie HttpOnly géré exclusivement par le backend.
 
-const IS_PROD = typeof window !== 'undefined' && window.location.protocol === 'https:';
-const COOKIE_OPTS = { secure: IS_PROD, sameSite: 'Strict' };
+const FALLBACK_COOKIE_OPTS_PROD = { secure: true,  sameSite: 'None', expires: 180 };
+const FALLBACK_COOKIE_OPTS_DEV  = { secure: false, sameSite: 'Lax',  expires: 1   };
 
-export const saveSession = (user, rememberMe) => {
+/**
+ * Sauvegarde la session après login.
+ * - nova_user     : infos d'affichage (non HttpOnly, durée selon rememberMe)
+ * - nova_token_js : JWT fallback (envoyé en Bearer si HttpOnly bloqué)
+ */
+export const saveSession = (token, user, rememberMe) => {
   const expires = rememberMe ? 180 : 1;
   Cookies.set('nova_user', JSON.stringify(user), { expires, ...COOKIE_OPTS });
+
+  // Fallback token : mêmes options de durée, SameSite=None en prod (cross-origin)
+  const fbOpts = IS_PROD
+    ? { ...FALLBACK_COOKIE_OPTS_PROD, expires: rememberMe ? 180 : 1 }
+    : { ...FALLBACK_COOKIE_OPTS_DEV,  expires: rememberMe ? 180 : 1 };
+  Cookies.set('nova_token_js', token, fbOpts);
 };
 
 export const getSession = () => {
@@ -135,7 +163,8 @@ export const getSession = () => {
 };
 
 export const clearSession = () => {
-  Cookies.remove('nova_user', COOKIE_OPTS);
+  Cookies.remove('nova_user',     COOKIE_OPTS);
+  Cookies.remove('nova_token_js', IS_PROD ? { sameSite: 'None', secure: true } : {});
 };
 
 export default api;
