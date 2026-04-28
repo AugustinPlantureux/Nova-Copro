@@ -66,7 +66,8 @@ const setTokenCookie = (res, token, rememberMe) => {
   res.cookie(TOKEN_COOKIE, token, {
     httpOnly: true,
     secure:   IS_PROD,              // HTTPS obligatoire en prod (requis par SameSite=None)
-    sameSite: IS_PROD ? 'none' : 'lax',
+    sameSite: 'lax',
+    domain:   process.env.COOKIE_DOMAIN || undefined,
     maxAge,
     path:     '/',
   });
@@ -76,7 +77,8 @@ const clearTokenCookie = (res) => {
   res.clearCookie(TOKEN_COOKIE, {
     httpOnly: true,
     secure:   IS_PROD,
-    sameSite: IS_PROD ? 'none' : 'lax',
+    sameSite: 'lax',
+    domain:   process.env.COOKIE_DOMAIN || undefined,
     path:     '/',
   });
 };
