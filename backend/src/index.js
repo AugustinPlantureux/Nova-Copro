@@ -77,13 +77,16 @@ app.use('/api/user',   csrfMiddleware);
 app.use('/api/admin',  csrfMiddleware);
 
 // ── Rate limiting global ──────────────────────────────────────
-app.use(rateLimit({
+const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Trop de requêtes, veuillez réessayer plus tard.' },
-}));
+  skip: (req) => req.path.startsWith('/api/user/drive/thumbnail'),
+});
+
+app.use(globalLimiter);
 
 // ── Health checks ─────────────────────────────────────────────
 app.get('/health', (req, res) => {
