@@ -152,7 +152,7 @@ function FileItem({ file, coproprieteId, type, onNavigate, onPreview }) {
         ${file.isFolder ? 'hover:bg-amber-50 cursor-pointer' : 'hover:bg-gray-50'}`}
     >
       <div className={`flex-shrink-0 rounded-xl flex items-center justify-center overflow-hidden transition-colors
-        ${showThumbnail ? 'w-14 h-14' : 'w-10 h-10'}
+        ${showThumbnail ? 'w-28 h-28' : 'w-10 h-10'}
         ${file.isFolder ? 'bg-amber-50 group-hover:bg-amber-100' : 'bg-gray-50'}`}>
         {showThumbnail ? (
           <img
