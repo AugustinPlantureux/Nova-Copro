@@ -97,7 +97,16 @@ const formatDate = (dateStr) => {
 
 // ── FileItem ──────────────────────────────────────────────────
 
-function FileItem({ file, coproprieteId, type, onNavigate, onPreview }) {
+function FileItem({
+  file,
+  coproprieteId,
+  type,
+  onNavigate,
+  onPreview,
+  selected,
+  onToggleSelected,
+  onDownloadZip,
+}) {
   const { Icon, color } = getMimeIcon(file.mimeType, file.isFolder);
   const [downloading, setDownloading] = useState(false);
   const [thumbnailError, setThumbnailError] = useState(false);
@@ -151,6 +160,14 @@ function FileItem({ file, coproprieteId, type, onNavigate, onPreview }) {
       className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-150 group
         ${file.isFolder ? 'hover:bg-amber-50 cursor-pointer' : 'hover:bg-gray-50'}`}
     >
+      <input
+        type="checkbox"
+        checked={selected}
+        onClick={(e) => e.stopPropagation()}
+        onChange={() => onToggleSelected(file.id)}
+        className="w-4 h-4 accent-brand-600 flex-shrink-0"
+      />
+
       <div className={`flex-shrink-0 rounded-xl flex items-center justify-center overflow-hidden transition-colors
         ${showThumbnail ? 'w-28 h-28' : 'w-10 h-10'}
         ${file.isFolder ? 'bg-amber-50 group-hover:bg-amber-100' : 'bg-gray-50'}`}>
@@ -202,6 +219,19 @@ function FileItem({ file, coproprieteId, type, onNavigate, onPreview }) {
             {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
           </button>
         </div>
+      )}
+
+      {file.isFolder && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDownloadZip([file.id]);
+          }}
+          title="Télécharger le dossier en ZIP"
+          className="p-2 rounded-lg hover:bg-amber-100 text-gray-400 hover:text-amber-600 transition-colors flex-shrink-0"
+        >
+          <Download size={15} />
+        </button>
       )}
 
       {file.isFolder && (
@@ -298,6 +328,8 @@ export default function DriveExplorer({ coproprieteId, type, label, icon, onClos
   const [currentFolderId, setCurrent]  = useState(null);
   const [breadcrumbs,   setBreadcrumbs] = useState([]);
   const [preview,       setPreview]     = useState(null);
+  const [selectedIds,   setSelectedIds] = useState(new Set());
+  const [zipDownloading, setZipDownloading] = useState(false);
 
   const fetchFolder = useCallback(async (folderId = null) => {
     setLoading(true);
@@ -317,6 +349,74 @@ export default function DriveExplorer({ coproprieteId, type, label, icon, onClos
   }, [coproprieteId, type]);
 
   useEffect(() => { fetchFolder(); }, [fetchFolder]);
+
+  const toggleSelected = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const downloadZip = async (ids = Array.from(selectedIds)) => {
+    if (!ids.length) return;
+
+    if (ids.length > 50) {
+      alert('Maximum 50 éléments par téléchargement ZIP.');
+      return;
+    }
+
+    setZipDownloading(true);
+
+    try {
+      const response = await api.post(
+        '/api/user/drive/download-zip',
+        {
+          copropriete_id: coproprieteId,
+          type,
+          item_ids: ids,
+        },
+        {
+          responseType: 'blob',
+        }
+      );
+
+      const blob = new Blob([response.data], { type: 'application/zip' });
+      const blobUrl = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `documents-nova-copro-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      window.URL.revokeObjectURL(blobUrl);
+      clearSelection();
+    } catch (err) {
+      const blob = err.response?.data;
+
+      if (blob instanceof Blob && blob.type?.includes('application/json')) {
+        const text = await blob.text();
+        const json = JSON.parse(text);
+        alert(json.error || 'Erreur lors du téléchargement ZIP.');
+      } else {
+        alert(err.response?.data?.error || 'Erreur lors du téléchargement ZIP.');
+      }
+    } finally {
+      setZipDownloading(false);
+    }
+  };
 
   const navigateInto = (folderId, folderName) => {
     setBreadcrumbs(prev => [...prev, { id: folderId, name: folderName }]);
@@ -418,14 +518,49 @@ export default function DriveExplorer({ coproprieteId, type, label, icon, onClos
             )}
             {!loading && !error && files.length > 0 && (
               <div className="p-3">
+                {selectedIds.size > 0 && (
+                  <div className="flex items-center justify-between gap-3 p-3 mb-3 rounded-xl bg-brand-50 border border-brand-100">
+                    <span className="text-sm text-brand-700">
+                      {selectedIds.size} élément{selectedIds.size > 1 ? 's' : ''} sélectionné{selectedIds.size > 1 ? 's' : ''}
+                    </span>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={clearSelection}
+                        className="px-3 py-2 text-sm rounded-lg hover:bg-white"
+                      >
+                        Annuler
+                      </button>
+
+                      <button
+                        onClick={() => downloadZip()}
+                        disabled={zipDownloading}
+                        className="px-3 py-2 text-sm rounded-lg bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {zipDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                        Télécharger en ZIP
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {folders.length > 0 && (
                   <div className="mb-2">
                     <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-3 py-1.5">
                       Dossiers ({folders.length})
                     </p>
                     {folders.map(file => (
-                      <FileItem key={file.id} file={file} coproprieteId={coproprieteId}
-                        type={type} onNavigate={navigateInto} onPreview={setPreview} />
+                      <FileItem
+                        key={file.id}
+                        file={file}
+                        coproprieteId={coproprieteId}
+                        type={type}
+                        selected={selectedIds.has(file.id)}
+                        onToggleSelected={toggleSelected}
+                        onDownloadZip={downloadZip}
+                        onNavigate={navigateInto}
+                        onPreview={setPreview}
+                      />
                     ))}
                   </div>
                 )}
@@ -437,8 +572,17 @@ export default function DriveExplorer({ coproprieteId, type, label, icon, onClos
                       </p>
                     )}
                     {documents.map(file => (
-                      <FileItem key={file.id} file={file} coproprieteId={coproprieteId}
-                        type={type} onNavigate={navigateInto} onPreview={setPreview} />
+                      <FileItem
+                        key={file.id}
+                        file={file}
+                        coproprieteId={coproprieteId}
+                        type={type}
+                        selected={selectedIds.has(file.id)}
+                        onToggleSelected={toggleSelected}
+                        onDownloadZip={downloadZip}
+                        onNavigate={navigateInto}
+                        onPreview={setPreview}
+                      />
                     ))}
                   </div>
                 )}
