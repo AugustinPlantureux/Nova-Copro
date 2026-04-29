@@ -22,8 +22,18 @@ const router = express.Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
 const driveService = require('../services/drive');
+const rateLimit = require('express-rate-limit');
 
 router.use(authMiddleware);
+
+const thumbnailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de vignettes demandées, veuillez réessayer plus tard.' },
+  keyGenerator: (req) => req.user?.id || req.ip,
+});
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -151,6 +161,28 @@ router.get('/preview', async (req, res) => {
 
     await driveService.streamPreview(file_id, res);
 
+  } catch (err) {
+    if (!res.headersSent) return handleError(err, res);
+  }
+});
+
+router.get('/thumbnail', thumbnailLimiter, async (req, res) => {
+  const { file_id, copropriete_id, type } = req.query;
+
+  if (!file_id || !copropriete_id || !type) {
+    return res.status(400).json({ error: 'Paramètres manquants' });
+  }
+
+  try {
+    const rootFolderId = await getRootFolderId(req.user.id, copropriete_id, type);
+
+    const allowed = await driveService.isDescendantOf(file_id, rootFolderId);
+
+    if (!allowed) {
+      return res.status(403).json({ error: 'Fichier non autorisé' });
+    }
+
+    await driveService.streamThumbnail(file_id, res);
   } catch (err) {
     if (!res.headersSent) return handleError(err, res);
   }
