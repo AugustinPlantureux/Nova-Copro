@@ -60,6 +60,15 @@ const extractFolderId = (urlOrId) => {
 
 // ── MIME types Google → export PDF pour prévisualisation ─────
 
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+const ZIP_LIMITS = {
+  MAX_SELECTED_ITEMS: 50,
+  MAX_DEPTH: 5,
+  MAX_FILES: 200,
+  MAX_ESTIMATED_BYTES: 300 * 1024 * 1024, // 300 Mo estimés
+};
+
 const GOOGLE_MIME_EXPORTS = {
   'application/vnd.google-apps.document':     'application/pdf',
   'application/vnd.google-apps.spreadsheet':  'application/pdf',
@@ -70,6 +79,51 @@ const GOOGLE_MIME_EXPORTS = {
 const isGoogleNativeType = (mimeType) =>
   mimeType?.startsWith('application/vnd.google-apps.');
 
+const safeZipName = (name) =>
+  String(name || 'sans-nom')
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+
+const makeUniqueZipPath = (path, usedPaths) => {
+  if (!usedPaths.has(path)) {
+    usedPaths.add(path);
+    return path;
+  }
+
+  const lastSlashIndex = path.lastIndexOf('/');
+  const dir = lastSlashIndex >= 0 ? path.slice(0, lastSlashIndex + 1) : '';
+  const file = lastSlashIndex >= 0 ? path.slice(lastSlashIndex + 1) : path;
+
+  const dotIndex = file.lastIndexOf('.');
+  const base = dotIndex > 0 ? file.slice(0, dotIndex) : file;
+  const ext = dotIndex > 0 ? file.slice(dotIndex) : '';
+
+  let i = 2;
+  let candidate;
+
+  do {
+    candidate = `${dir}${base} (${i})${ext}`;
+    i += 1;
+  } while (usedPaths.has(candidate));
+
+  usedPaths.add(candidate);
+  return candidate;
+};
+
+const getZipFileName = (meta) => {
+  const { name, mimeType } = meta;
+
+  if (isGoogleNativeType(mimeType)) {
+    const exportMime = GOOGLE_MIME_EXPORTS[mimeType] || 'application/pdf';
+    const exportExt = exportMime === 'image/png' ? '.png' : '.pdf';
+    return name.endsWith(exportExt) ? name : name + exportExt;
+  }
+
+  return name;
+};
+
 // ── Options communes Shared Drives ───────────────────────────
 // Ces paramètres sont requis pour que les requêtes fonctionnent aussi bien
 // sur les My Drives classiques que sur les Shared Drives (lecteurs partagés).
@@ -77,6 +131,28 @@ const isGoogleNativeType = (mimeType) =>
 const SHARED_DRIVES_OPTS = {
   supportsAllDrives:         true,
   includeItemsFromAllDrives: true,
+};
+
+const listFolderRaw = async (folderId) => {
+  const drive = getDrive();
+  const allFiles = [];
+  let pageToken = undefined;
+
+  do {
+    const response = await drive.files.list({
+      q: `'${folderId}' in parents and trashed = false`,
+      fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime)',
+      orderBy: 'folder,name asc',
+      pageSize: 1000,
+      pageToken,
+      ...SHARED_DRIVES_OPTS,
+    });
+
+    allFiles.push(...(response.data.files || []));
+    pageToken = response.data.nextPageToken;
+  } while (pageToken);
+
+  return allFiles;
 };
 
 // ── Vérification d'accessibilité d'un dossier ────────────────
@@ -95,7 +171,7 @@ const checkFolderAccessible = async (folderId) => {
       ...SHARED_DRIVES_OPTS,
     });
     const { mimeType } = res.data;
-    if (mimeType !== 'application/vnd.google-apps.folder') {
+    if (mimeType !== FOLDER_MIME) {
       throw Object.assign(new Error('L\'ID Drive ne pointe pas vers un dossier'), { status: 400 });
     }
     return res.data;
@@ -145,7 +221,7 @@ const listFolder = async (folderId) => {
     id:               f.id,
     name:             f.name,
     mimeType:         f.mimeType,
-    isFolder:         f.mimeType === 'application/vnd.google-apps.folder',
+    isFolder:         f.mimeType === FOLDER_MIME,
     isGoogleDoc:      isGoogleNativeType(f.mimeType),
     size:             f.size ? formatSize(parseInt(f.size)) : null,
     modifiedTime:     f.modifiedTime,
@@ -167,34 +243,155 @@ const getFileMetadata = async (fileId) => {
   return res.data;
 };
 
-// ── Stream d'un fichier vers la réponse HTTP ──────────────────
+// ── Pré-analyse des éléments à zipper ───────────────────────
 
-const streamFile = async (fileId, res) => {
+const collectZipItem = async (itemId, basePath, depth, state, existingMeta = null) => {
+  const meta = existingMeta || await getFileMetadata(itemId);
+  const cleanName = safeZipName(meta.name);
+
+  if (meta.mimeType === FOLDER_MIME) {
+    const folderPath = basePath ? `${basePath}/${cleanName}` : cleanName;
+
+    state.entries.push({
+      type: 'folder',
+      zipPath: makeUniqueZipPath(`${folderPath}/`, state.usedPaths),
+    });
+
+    if (depth >= ZIP_LIMITS.MAX_DEPTH) {
+      state.entries.push({
+        type: 'note',
+        zipPath: makeUniqueZipPath(
+          `${folderPath}/[dossier trop profond - télécharger séparément].txt`,
+          state.usedPaths
+        ),
+        content: 'Ce dossier dépasse la profondeur maximale autorisée pour un téléchargement ZIP groupé. Merci de le télécharger séparément.',
+      });
+      return;
+    }
+
+    const children = await listFolderRaw(itemId);
+
+    for (const child of children) {
+      await collectZipItem(child.id, folderPath, depth + 1, state, child);
+    }
+
+    return;
+  }
+
+  state.fileCount += 1;
+
+  if (state.fileCount > ZIP_LIMITS.MAX_FILES) {
+    throw Object.assign(
+      new Error(`Téléchargement trop volumineux : maximum ${ZIP_LIMITS.MAX_FILES} fichiers dans un ZIP.`),
+      { status: 400 }
+    );
+  }
+
+  const estimatedSize = Number.parseInt(meta.size || '0', 10) || 0;
+  state.estimatedBytes += estimatedSize;
+
+  if (state.estimatedBytes > ZIP_LIMITS.MAX_ESTIMATED_BYTES) {
+    throw Object.assign(
+      new Error('Téléchargement trop volumineux : la taille totale estimée dépasse 300 Mo.'),
+      { status: 400 }
+    );
+  }
+
+  const fileName = safeZipName(getZipFileName(meta));
+  const zipPath = basePath ? `${basePath}/${fileName}` : fileName;
+
+  state.entries.push({
+    type: 'file',
+    fileId: itemId,
+    meta,
+    zipPath: makeUniqueZipPath(zipPath, state.usedPaths),
+  });
+};
+
+const collectZipEntries = async (itemIds) => {
+  if (!Array.isArray(itemIds) || itemIds.length === 0) {
+    throw Object.assign(new Error('Aucun élément sélectionné.'), { status: 400 });
+  }
+
+  if (itemIds.length > ZIP_LIMITS.MAX_SELECTED_ITEMS) {
+    throw Object.assign(
+      new Error(`Maximum ${ZIP_LIMITS.MAX_SELECTED_ITEMS} éléments par téléchargement ZIP.`),
+      { status: 400 }
+    );
+  }
+
+  const state = {
+    entries: [],
+    usedPaths: new Set(),
+    fileCount: 0,
+    estimatedBytes: 0,
+  };
+
+  for (const itemId of itemIds) {
+    await collectZipItem(itemId, '', 0, state);
+  }
+
+  return {
+    entries: state.entries,
+    fileCount: state.fileCount,
+    estimatedBytes: state.estimatedBytes,
+  };
+};
+
+// ── Stream téléchargeable pour fichier ou export Google ─────
+
+const getDownloadStream = async (fileId, existingMeta = null) => {
   const drive = getDrive();
-  const meta  = await getFileMetadata(fileId);
+  const meta = existingMeta || await getFileMetadata(fileId);
   const { name, mimeType } = meta;
-
-  let stream, contentType, fileName;
 
   if (isGoogleNativeType(mimeType)) {
     const exportMime = GOOGLE_MIME_EXPORTS[mimeType] || 'application/pdf';
-    const exportExt  = exportMime === 'image/png' ? '.png' : '.pdf';
-    const exportRes  = await drive.files.export(
+    const exportExt = exportMime === 'image/png' ? '.png' : '.pdf';
+
+    const exportRes = await drive.files.export(
       { fileId, mimeType: exportMime },
       { responseType: 'stream' }
     );
-    stream      = exportRes.data;
-    contentType = exportMime;
-    fileName    = name.endsWith(exportExt) ? name : name + exportExt;
-  } else {
-    const dlRes = await drive.files.get(
-      { fileId, alt: 'media', ...SHARED_DRIVES_OPTS },
-      { responseType: 'stream' }
-    );
-    stream      = dlRes.data;
-    contentType = mimeType || 'application/octet-stream';
-    fileName    = name;
+
+    return {
+      stream: exportRes.data,
+      contentType: exportMime,
+      fileName: name.endsWith(exportExt) ? name : name + exportExt,
+    };
   }
+
+  const dlRes = await drive.files.get(
+    { fileId, alt: 'media', ...SHARED_DRIVES_OPTS },
+    { responseType: 'stream' }
+  );
+
+  return {
+    stream: dlRes.data,
+    contentType: mimeType || 'application/octet-stream',
+    fileName: name,
+  };
+};
+
+const appendZipEntryToArchive = async (archive, entry) => {
+  if (entry.type === 'folder') {
+    archive.append('', { name: entry.zipPath });
+    return;
+  }
+
+  if (entry.type === 'note') {
+    archive.append(entry.content, { name: entry.zipPath });
+    return;
+  }
+
+  const { stream } = await getDownloadStream(entry.fileId, entry.meta);
+  archive.append(stream, { name: entry.zipPath });
+};
+
+// ── Stream d'un fichier vers la réponse HTTP ──────────────────
+
+const streamFile = async (fileId, res) => {
+  const { stream, contentType, fileName } = await getDownloadStream(fileId);
 
   res.setHeader('Content-Type', contentType);
   res.setHeader(
@@ -355,4 +552,6 @@ module.exports = {
   streamPreview,
   streamThumbnail,
   isDescendantOf,
+  collectZipEntries,
+  appendZipEntryToArchive,
 };
