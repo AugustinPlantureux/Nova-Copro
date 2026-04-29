@@ -22,6 +22,24 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 const fetchWithCredentials = (url, options = {}) =>
   fetch(url, { credentials: 'include', ...options });
 
+// ── URL de vignette image ─────────────────────────────────────
+
+const getThumbnailUrl = (file, coproprieteId, type) => {
+  const params = new URLSearchParams({
+    file_id: file.id,
+    copropriete_id: coproprieteId,
+    type,
+  });
+
+  if (file.thumbnailVersion) {
+    params.set('v', String(file.thumbnailVersion));
+  } else if (file.modifiedTime) {
+    params.set('v', file.modifiedTime);
+  }
+
+  return `${API_BASE}/api/user/drive/thumbnail?${params.toString()}`;
+};
+
 // ── Icônes par type MIME ──────────────────────────────────────
 
 const getMimeIcon = (mimeType, isFolder) => {
@@ -82,6 +100,19 @@ const formatDate = (dateStr) => {
 function FileItem({ file, coproprieteId, type, onNavigate, onPreview }) {
   const { Icon, color } = getMimeIcon(file.mimeType, file.isFolder);
   const [downloading, setDownloading] = useState(false);
+  const [thumbnailError, setThumbnailError] = useState(false);
+
+  const hasThumbnailMetadata = Boolean(
+    file.hasThumbnail ||
+    file.thumbnail ||
+    file.thumbnailVersion
+  );
+
+  const showThumbnail =
+    !file.isFolder &&
+    file.mimeType?.startsWith('image/') &&
+    hasThumbnailMetadata &&
+    !thumbnailError;
 
   const handleDownload = async (e) => {
     e.stopPropagation();
@@ -120,10 +151,23 @@ function FileItem({ file, coproprieteId, type, onNavigate, onPreview }) {
       className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-150 group
         ${file.isFolder ? 'hover:bg-amber-50 cursor-pointer' : 'hover:bg-gray-50'}`}
     >
-      <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center
+      <div className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden
         ${file.isFolder ? 'bg-amber-50 group-hover:bg-amber-100' : 'bg-gray-50'} transition-colors`}>
-        <Icon size={20} className={`${color} ${file.isFolder ? 'group-hover:hidden' : ''}`} />
-        {file.isFolder && <FolderOpen size={20} className={`${color} hidden group-hover:block`} />}
+        {showThumbnail ? (
+          <img
+            src={getThumbnailUrl(file, coproprieteId, type)}
+            alt={file.name}
+            loading="lazy"
+            decoding="async"
+            onError={() => setThumbnailError(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <>
+            <Icon size={20} className={`${color} ${file.isFolder ? 'group-hover:hidden' : ''}`} />
+            {file.isFolder && <FolderOpen size={20} className={`${color} hidden group-hover:block`} />}
+          </>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
