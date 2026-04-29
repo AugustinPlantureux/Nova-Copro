@@ -7,6 +7,9 @@
  * GET  /api/user/drive/download  ?file_id=F&copropriete_id=X&type=Y
  *      → télécharge un fichier (stream via le backend)
  *
+ * POST /api/user/drive/download-zip
+ *      → télécharge plusieurs fichiers/dossiers dans une archive ZIP
+ *
  * GET  /api/user/drive/preview   ?file_id=F&copropriete_id=X&type=Y
  *      → affiche un fichier inline (PDF, image) dans un iframe
  *
@@ -18,6 +21,7 @@
  */
 
 const express = require('express');
+const archiver = require('archiver');
 const router = express.Router();
 const db = require('../db');
 const { authMiddleware } = require('../middleware/auth');
@@ -139,6 +143,75 @@ router.get('/download', async (req, res) => {
 
   } catch (err) {
     if (!res.headersSent) return handleError(err, res);
+  }
+});
+
+// ── POST /api/user/drive/download-zip ────────────────────────
+
+router.post('/download-zip', async (req, res) => {
+  const { item_ids, copropriete_id, type } = req.body;
+
+  if (!Array.isArray(item_ids) || item_ids.length === 0 || !copropriete_id || !type) {
+    return res.status(400).json({
+      error: 'item_ids, copropriete_id et type sont requis',
+    });
+  }
+
+  if (item_ids.length > 50) {
+    return res.status(400).json({
+      error: 'Maximum 50 éléments par téléchargement ZIP.',
+    });
+  }
+
+  try {
+    const rootFolderId = await getRootFolderId(req.user.id, copropriete_id, type);
+
+    for (const itemId of item_ids) {
+      const allowed = await driveService.isDescendantOf(itemId, rootFolderId);
+
+      if (!allowed) {
+        return res.status(403).json({
+          error: 'Un élément sélectionné n’est pas dans votre espace autorisé.',
+        });
+      }
+    }
+
+    const { entries } = await driveService.collectZipEntries(item_ids);
+
+    if (!entries.length) {
+      return res.status(400).json({
+        error: 'Aucun fichier téléchargeable dans la sélection.',
+      });
+    }
+
+    const zipName = `documents-nova-copro-${new Date().toISOString().slice(0, 10)}.zip`;
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename*=UTF-8''${encodeURIComponent(zipName)}`
+    );
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    const archive = archiver('zip', {
+      zlib: { level: 6 },
+    });
+
+    archive.on('error', (err) => {
+      if (!res.headersSent) return handleError(err, res);
+      res.destroy(err);
+    });
+
+    archive.pipe(res);
+
+    for (const entry of entries) {
+      await driveService.appendZipEntryToArchive(archive, entry);
+    }
+
+    await archive.finalize();
+  } catch (err) {
+    if (!res.headersSent) return handleError(err, res);
+    res.destroy(err);
   }
 });
 
