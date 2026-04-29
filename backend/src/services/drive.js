@@ -15,9 +15,9 @@ const { google } = require('googleapis');
 
 let _drive = null;
 
-const getDrive = () => {
-  if (_drive) return _drive;
+const DRIVE_SCOPES = ['https://www.googleapis.com/auth/drive.readonly'];
 
+const createDriveAuth = () => {
   const jsonRaw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!jsonRaw) throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON manquant dans les variables d\'env');
 
@@ -28,10 +28,21 @@ const getDrive = () => {
     throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON : JSON invalide');
   }
 
-  const auth = new google.auth.GoogleAuth({
+  return new google.auth.GoogleAuth({
     credentials,
-    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
+    scopes: DRIVE_SCOPES,
   });
+};
+
+const getFreshAuthClient = async () => {
+  const auth = createDriveAuth();
+  return auth.getClient();
+};
+
+const getDrive = () => {
+  if (_drive) return _drive;
+
+  const auth = createDriveAuth();
 
   _drive = google.drive({ version: 'v3', auth });
   return _drive;
@@ -120,7 +131,7 @@ const listFolder = async (folderId) => {
   do {
     const response = await drive.files.list({
       q: `'${folderId}' in parents and trashed = false`,
-      fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink)',
+      fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime, thumbnailLink, thumbnailVersion, hasThumbnail)',
       orderBy: 'folder,name asc',
       pageSize: 1000,
       pageToken,
@@ -131,14 +142,16 @@ const listFolder = async (folderId) => {
   } while (pageToken);
 
   return allFiles.map(f => ({
-    id:           f.id,
-    name:         f.name,
-    mimeType:     f.mimeType,
-    isFolder:     f.mimeType === 'application/vnd.google-apps.folder',
-    isGoogleDoc:  isGoogleNativeType(f.mimeType),
-    size:         f.size ? formatSize(parseInt(f.size)) : null,
-    modifiedTime: f.modifiedTime,
-    thumbnail:    f.thumbnailLink || null,
+    id:               f.id,
+    name:             f.name,
+    mimeType:         f.mimeType,
+    isFolder:         f.mimeType === 'application/vnd.google-apps.folder',
+    isGoogleDoc:      isGoogleNativeType(f.mimeType),
+    size:             f.size ? formatSize(parseInt(f.size)) : null,
+    modifiedTime:     f.modifiedTime,
+    thumbnail:        f.thumbnailLink || null,
+    thumbnailVersion: f.thumbnailVersion || null,
+    hasThumbnail:     Boolean(f.thumbnailLink || f.hasThumbnail),
   }));
 };
 
@@ -235,6 +248,48 @@ const streamPreview = async (fileId, res) => {
   });
 };
 
+// ── Stream d'une vignette image ───────────────────────────────
+
+const streamThumbnail = async (fileId, res) => {
+  const drive = getDrive();
+
+  const metaRes = await drive.files.get({
+    fileId,
+    fields: 'id, name, mimeType, thumbnailLink, thumbnailVersion',
+    ...SHARED_DRIVES_OPTS,
+  });
+
+  const { name, mimeType, thumbnailLink, thumbnailVersion } = metaRes.data;
+
+  if (!mimeType?.startsWith('image/')) {
+    throw Object.assign(new Error('Ce fichier n’est pas une image'), { status: 400 });
+  }
+
+  if (!thumbnailLink) {
+    throw Object.assign(new Error('Aucune vignette disponible'), { status: 404 });
+  }
+
+  const authClient = await getFreshAuthClient();
+
+  const thumbRes = await authClient.request({
+    url: thumbnailLink,
+    responseType: 'stream',
+  });
+
+  res.setHeader('Content-Type', thumbRes.headers['content-type'] || 'image/jpeg');
+  res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(name)}`);
+  res.setHeader('Cache-Control', 'private, max-age=86400, stale-while-revalidate=604800');
+  res.setHeader('ETag', `"thumb-${fileId}-${thumbnailVersion || 'v0'}"`);
+  res.setHeader('Vary', 'Cookie');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+
+  return new Promise((resolve, reject) => {
+    thumbRes.data.pipe(res);
+    thumbRes.data.on('end', resolve);
+    thumbRes.data.on('error', reject);
+  });
+};
+
 // ── Vérification d'ascendance (sécurité accès sous-dossiers) ─
 
 const _ancestryCache = new Map();
@@ -298,5 +353,6 @@ module.exports = {
   getFileMetadata,
   streamFile,
   streamPreview,
+  streamThumbnail,
   isDescendantOf,
 };
